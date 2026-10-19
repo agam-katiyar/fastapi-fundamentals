@@ -29,11 +29,17 @@ class Patient(BaseModel):
         elif self.bmi < 25:
             return 'Normal'
         elif self.bmi < 30:
-            return 'Normal'
+            return 'Overweight'
         else:
             return 'Obese'
 
-
+class PatientUpdate(BaseModel):
+    name: Annotated[Optional[str], Field(default=None)]
+    city: Annotated[Optional[str], Field(default=None)]
+    age: Annotated[Optional[int], Field(default=None, gt=0)]
+    gender: Annotated[Optional[Literal['male','female','others']], Field(default=None)]
+    height: Annotated[Optional[float], Field(default=None, gt=0)]
+    weight: Annotated[Optional[float], Field(default=None, gt=0)]
 
         
 def load_data():
@@ -64,7 +70,7 @@ def view():
 
 # get patient data by patient id and proper http request status
 @app.get('/patient/{patient_id}')
-def view_patient(patient_id: str = Path(..., description='ID of the patient in the DB', example='P001')):
+def view_patient(patient_id: str = Path(..., description='ID of the patient in the DB', examples='P001')):
     #load all the pateint's data
     data = load_data()
 
@@ -109,3 +115,58 @@ def create_patient(patient: Patient): # receives data from user in patient pydan
     save_data(data)
     # returning json response
     return JSONResponse(status_code=201, content={'message':'Patient created successfully'})
+
+
+@app.put('/edit/{patient_id}')
+def update_patient(patient_id: str, patient_update: PatientUpdate):
+    data = load_data()
+
+    ## checking existence of patientid in data
+    if patient_id not in data:
+        raise HTTPException(status_code=404, detail='Patient not found')
+
+    # extracting existing patient's data
+    existing_patient_info = data[patient_id]
+
+    # converting update data into dictionary
+    updated_patient_info = patient_update.model_dump(exclude_unset=True) # exclude fields which are not provided to update
+
+    # updating new value in dictionary
+    for key,value in updated_patient_info.items():
+        existing_patient_info[key]= value
+
+    # converting existing dictionary into pydantic object to update calculating fields also(bmi, verdict)
+    #existing_patient_info -> pydantic object -> update bmi + verdict
+
+    existing_patient_info['id'] = patient_id
+    patient_pydantic_obj = Patient(**existing_patient_info)
+
+
+    # -> pydantic object -> dict
+    existing_patient_info = patient_pydantic_obj.model_dump(exclude={'id'})
+
+    # adding this dict to data
+    data[patient_id] = existing_patient_info
+
+    # save data
+    save_data(data)
+
+    return JSONResponse(status_code=200, content={'message':"Patient details updated"})
+
+
+@app.delete('/delete/{patient_id}')
+def delete_patient(patient_id: str):
+
+    # load tha data
+    data = load_data()
+
+    # Checking existence of patient
+    if patient_id not in data:
+        raise HTTPException(status_code=404, detail='Patient not found')
+
+    # deleting
+    del data[patient_id]
+
+    save_data(data)
+
+    return JSONResponse(status_code=200, content={'message':'Patient is deleted'})
